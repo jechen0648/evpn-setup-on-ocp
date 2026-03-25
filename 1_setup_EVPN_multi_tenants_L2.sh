@@ -42,8 +42,8 @@ BASE_IP_VNI=20200
 FRR_CONTAINER_IP="192.168.111.3"
 FRR_CONTAINER_GW="192.168.111.1"
 
-BRIDGE="sdn09bm"
-CONTAINER_NET="${BRIDGE}_net"
+BRIDGE=""
+CONTAINER_NET=""
 
 ############################################
 # Helper
@@ -230,6 +230,23 @@ zebra=yes
 EOF
 
   chmod a+rw ${frr_config}/*
+
+  # Auto-detect baremetal bridge carrying 192.168.111.0/24
+  BRIDGE=""
+  for br in $(ip link show type bridge 2>/dev/null | awk -F': ' '/^[0-9]/{print $2}'); do
+      if ip -4 addr show "$br" 2>/dev/null | grep -q "192\.168\.111\."; then
+          BRIDGE="$br"
+          break
+      fi
+  done
+  if [ -z "$BRIDGE" ]; then
+      echo "ERROR: No bridge found carrying 192.168.111.0/24."
+      echo "Available bridges:"
+      ip link show type bridge 2>/dev/null | awk -F': ' '/^[0-9]/{print "  " $2}'
+      exit 1
+  fi
+  echo "Found baremetal bridge: $BRIDGE"
+  CONTAINER_NET="${BRIDGE}_net"
 
   $CLI rm -f frr || true
   $CLI network rm -f ${CONTAINER_NET} || true
@@ -556,3 +573,5 @@ create_tenants
 deploy_workloads
 
 echo "EVPN multi-tenant L2VPN setup completed"
+
+
